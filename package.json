@@ -1,0 +1,17 @@
+{
+  "name": "isp-auto-responder",
+  "version": "1.0.0",
+  "description": "ISP Email Auto-Responder with Radius Automation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.7",
+    "pino": "^9.1.0",
+    "puppeteer-core": "^25.0.4",
+    "xml-js": "^1.6.1"
+  }
+}
