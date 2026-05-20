@@ -1,0 +1,31 @@
+{"level":50,"time":"2026-05-19T08:07:03.151Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"Email or APP_PASSWORD missing in .env file!"}
+{"level":30,"time":"2026-05-19T08:07:03.152Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"=================================================="}
+{"level":30,"time":"2026-05-19T08:07:03.152Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"ISP Atom Feed Auto-Responder Bot is Active!"}
+{"level":30,"time":"2026-05-19T08:07:03.152Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"Monitoring Gmail for new requests... [No IMAP Required]"}
+{"level":30,"time":"2026-05-19T08:07:03.152Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"=================================================="}
+{"level":50,"time":"2026-05-19T08:07:18.151Z","pid":13616,"hostname":"LAPTOP-54LIRSIJ","msg":"Email or APP_PASSWORD missing in .env file!"}
+[ERROR] [7:45:39 PM] Email or APP_PASSWORD missing in .env file!
+[INFO] [7:45:39 PM] ==================================================
+[INFO] [7:45:39 PM] ISP Auto-Responder Bot is Active! (Smart UI Mode)
+[INFO] [7:45:39 PM] Monitoring Gmail for new requests...
+[INFO] [7:45:39 PM] ==================================================
+[ERROR] [7:45:54 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:46:09 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:46:24 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:46:39 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:46:54 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:47:09 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:47:24 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:47:39 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:47:54 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:48:09 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:48:24 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:48:39 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:48:54 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:49:09 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:49:24 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:49:39 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:49:54 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [7:50:09 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [9:11:52 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [10:43:38 PM] Email or APP_PASSWORD missing in .env file!

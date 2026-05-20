@@ -1,130 +1,139 @@
-const puppeteer = require('puppeteer');
-const logger = require('../logger'); // আপনার Pino Logger
+const puppeteer = require('puppeteer-core');
+const logger = require('../logger'); 
 
 async function automateRadiusToken(userId) {
     let browser;
     try {
-        logger.info(`Starting Radius Automation Engine for User ID: ${userId}`);
+        logger.info(`Starting UI Automation Engine for User Data: ${userId}`);
         
         browser = await puppeteer.launch({ 
-            headless: true, // স্ক্রিন ব্যাকগ্রাউন্ডে লুকাতে true, লাইভ দেখতে চাইলে false করতে পারেন
+            headless: false, // প্রোডাকশনে যাওয়ার সময় এটা true করে দেবেন
+            executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 
             userDataDir: './data/browser_session', 
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'] 
         });
 
         const page = await browser.newPage();
-        await page.setDefaultTimeout(120000); // গ্লোবাল টাইমআউট ২ মিনিট
-        await page.setDefaultNavigationTimeout(120000);
+        await page.setDefaultTimeout(120000);
 
         // ==========================================
-        // 🔐 ধাপ ১: অটো-লগইন প্রোটেকশন
+        // 🔐 ধাপ ১: স্মার্ট লগইন লজিক
         // ==========================================
-        await page.goto('https://radius.ispname.com/login-page'); // 👈 আসল লগইন URL
+        await page.goto('https://billing.circlenetworkbd.net/admin/login', { waitUntil: 'networkidle2' });
 
-        const LOGIN_BOX_SELECTOR = '#username'; 
-        const isLoginRequired = await page.$(LOGIN_BOX_SELECTOR).then(el => el !== null).catch(() => false);
-
-        if (isLoginRequired) {
-            logger.info("Radius Session not found. Executing background auto-login...");
-            await page.type('#username', 'YOUR_RADIUS_USERNAME'); // 👈 আপনার আসল রেডিয়াস আইডি
-            await page.type('#password', 'YOUR_RADIUS_PASSWORD'); // 👈 আপনার আসল পাসওয়ার্ড
-            await page.click('#login_btn_id'); // 👈 লগইন বাটনের আইডি
-            await page.waitForNavigation({ waitUntil: 'networkidle2' });
-            logger.info("Login process completed successfully.");
+        if (page.url().includes('login')) {
+            logger.info("Executing fresh login...");
+            if (await page.$('#form2Example11')) {
+                await page.click('#form2Example11', { clickCount: 3 });
+                await page.keyboard.press('Backspace');
+                await page.type('#form2Example11', process.env.RADIUS_USER);
+            }
+            if (await page.$('#form2Example22')) {
+                await page.click('#form2Example22', { clickCount: 3 });
+                await page.keyboard.press('Backspace');
+                await page.type('#form2Example22', process.env.RADIUS_PASS);
+            }
+            if (await page.$('#logInBtn')) {
+                await page.click('#logInBtn');
+                await page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {});
+            }
         } else {
-            logger.info("Active session detected. Skipping login step.");
+            logger.info("Session active. Skipping login screen.");
         }
 
         // ==========================================
-        // 🎫 ধাপ ২: টোকেন ক্রিয়েট পেজ (অটো-ফিল এবং অটো-অ্যাসাইন)
+        // 🔍 ধাপ ২: Client Search পেজ (Smart Identification)
         // ==========================================
-        await page.goto('https://radius.ispname.com/token-page'); // 👈 আসল টোকেন ক্রিয়েট URL
+        await page.goto('https://billing.circlenetworkbd.net/admin/clientSearch', { waitUntil: 'networkidle2' });
 
-        const SEARCH_SELECTOR = 'input[placeholder="Search by customer user name"]';
-        await page.waitForSelector(SEARCH_SELECTOR, { timeout: 5000 });
-        await page.type(SEARCH_SELECTOR, userId);
-        await page.keyboard.press('Enter');
+        logger.info(`Smart Searching for: ${userId}`);
 
-        await new Promise(r => setTimeout(r, 2000)); // CID, Name, Phone, Email অটো-ফিল হওয়ার বাফার
+        // স্মার্ট চেকিং: ফোন নাম্বার (+880/01), CID নাকি Username?
+        const isPhoneNumber = /^(?:\+?88)?(01\d{9})$/.test(userId); 
+        const isNumeric = /^\d+$/.test(userId) && !isPhoneNumber;
 
-        // কাস্টমার আইডি ভ্যালিডেশন চেক (CID বক্স পূরণ হয়েছে কিনা)
-        const isUserValid = await page.evaluate(() => {
-            const cidInput = document.querySelector('input[placeholder="CID"]');
-            return cidInput && cidInput.value.trim() !== '';
+        if (isPhoneNumber) {
+            const cleanPhone = userId.match(/(?:^\+?88)?(01\d{9})$/)[1]; 
+            await page.type('input[placeholder="01234567891"]', cleanPhone); 
+        } else if (isNumeric) {
+            await page.type('input[placeholder="CID"]', userId); 
+        } else {
+            await page.type('input[placeholder="Username"]', userId); 
+        }
+
+        // Search বাটনে ক্লিক
+        await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            const searchBtn = btns.find(b => b.innerText.includes('Search'));
+            if (searchBtn) searchBtn.click();
+        });
+        
+        await new Promise(r => setTimeout(r, 4000)); 
+
+        // 🎯 টেবিল থেকে data-userid অ্যাট্রিবিউট স্ক্র্যাপ করা (সবচেয়ে নিখুঁত উপায়)
+        const actualUsername = await page.evaluate(() => {
+            const firstRow = document.querySelector('table tbody tr:first-child');
+            return firstRow ? firstRow.getAttribute('data-userid') : null;
         });
 
-        if (!isUserValid) {
-            logger.warn(`User "${userId}" not found in Radius. Action Aborted.`);
-            await page.close();
+        if (!actualUsername) {
+            logger.warn(`User data "${userId}" not found. Aborting.`);
+            await browser.close();
             return null; 
         }
 
-        // 🔘 বক্স ১: Token Code ড্রপডাউন থেকে 'Need Support' সিলেক্ট
-        const TOKEN_CODE_SELECTOR = '#CHANGE_THIS_TO_YOUR_DROPDOWN_ID'; 
-        await page.waitForSelector(TOKEN_CODE_SELECTOR, { timeout: 3000 });
-        await page.select(TOKEN_CODE_SELECTOR, 'Need Support'); 
-
-        // 🔘 বক্স ২: Token Category ড্রপডাউন থেকে 'Problem' সিলেক্ট
-        const TOKEN_CATEGORY_SELECTOR = '#CHANGE_THIS_TO_TOKEN_CATEGORY_DROPDOWN_ID'; 
-        await page.select(TOKEN_CATEGORY_SELECTOR, 'Problem'); 
-
-        // 🔘 বক্স ৩: Token Source ড্রপডাউন থেকে 'Mail' সিলেক্ট 
-        const TOKEN_SOURCE_SELECTOR = '#CHANGE_THIS_TO_TOKEN_SOURCE_DROPDOWN_ID'; 
-        await page.select(TOKEN_SOURCE_SELECTOR, 'Mail'); 
-
-        // 🔘 বক্স ৪: Description বক্সে ফিক্সড টেক্সট টাইপ করা
-        const DESCRIPTION_BOX = '#CHANGE_THIS_TO_DESCRIPTION_BOX_ID'; 
-        const defaultDescription = "This ticket was automatically generated by the ISP Support Bot via email request. Please inspect the client line.";
-        await page.type(DESCRIPTION_BOX, defaultDescription);
-
-        // সেভ বাটন ক্লিক
-        const SAVE_BUTTON_SELECTOR = '#CHANGE_THIS_TO_YOUR_SAVE_BUTTON_ID'; 
-        await page.click(SAVE_BUTTON_SELECTOR);
-        await new Promise(r => setTimeout(r, 2000)); // ডাটাবেজে সেভ হওয়ার সেফটি বাফার
+        logger.info(`Match Found! Exact Username: ${actualUsername}. Proceeding...`);
 
         // ==========================================
-        // 🔍 📋 ধাপ ৩: টোকেন লিস্ট পেজ ফিল্টারিং ও উপরের আইডি স্ক্র্যাপ
+        // 🎫 ও 📋 ধাপ ৩ ও ৪: টোকেন ক্রিয়েট এবং লিস্ট (একই পেজে)
         // ==========================================
-        await page.goto('https://radius.ispname.com/token-list-or-search-page'); // 👈 লিস্ট পেজের URL
-
-        // 🔘 বক্স ৫: রিসেলার থেকে 'All' সিলেক্ট করা হলো
-        const RESELLER_DROPDOWN = '#CHANGE_THIS_TO_RESELLER_DROPDOWN_ID';
-        await page.waitForSelector(RESELLER_DROPDOWN, { timeout: 5000 });
-        await page.select(RESELLER_DROPDOWN, 'All'); 
-
-        // 🔘 বক্স ৬: টোকেন টাইপ থেকে 'Logical' সিলেক্ট করা
-        const TOKEN_TYPE_DROPDOWN = '#CHANGE_THIS_TO_TOKEN_TYPE_DROPDOWN_ID';
-        await page.select(TOKEN_TYPE_DROPDOWN, 'Logical'); 
-
-        // ⏳ ডাইনামিক বাফারিং হ্যান্ডেলার (১০ সেকেন্ড লাগুক বা ১ মিনিট—ভ্যানিশ হওয়া মাত্র বট রেডি হবে)
-        const BUFFERING_SELECTOR = '.loader'; // 👈 বাফারিং ওভারলে বা স্পিনারের আসল ক্লাস/আইডি
-        logger.info("Search filters applied. Waiting for buffering overlay...");
-        await page.waitForSelector(BUFFERING_SELECTOR, { visible: true, timeout: 15000 }).catch(() => {});
-        await page.waitForSelector(BUFFERING_SELECTOR, { hidden: true, timeout: 120000 });
-
-        // 🔘 বক্স ৭: নাম লেখার বক্সে 'Ahnaf Sadik Saad' লিখে ফিল্টার করা
-        const LIST_SEARCH_BOX = '#CHANGE_THIS_TO_LIST_SEARCH_BOX_ID'; 
-        await page.waitForSelector(LIST_SEARCH_BOX, { visible: true, timeout: 10000 });
-        await page.type(LIST_SEARCH_BOX, 'Ahnaf Sadik Saad');
-        await page.keyboard.press('Enter');
-
-        await new Promise(r => setTimeout(r, 3000)); // টেবিল ফিল্টারিং শেষ হওয়ার ফাইনাল বাফার
-
-        // 🎯 [Top Token Selector]: টেবিলের একদম প্রথম সারির (Latest Row) প্রথম কলাম থেকে আইডি স্ক্র্যাপ করা
-        const LATEST_TOKEN_SELECTOR = 'table tbody tr:first-child td:first-child'; 
-        await page.waitForSelector(LATEST_TOKEN_SELECTOR, { timeout: 5000 });
+        await page.goto('https://billing.circlenetworkbd.net/admin/add-token', { waitUntil: 'networkidle2' });
         
-        const finalTokenId = await page.evaluate((sel) => {
-            return document.querySelector(sel).innerText.trim();
-        }, LATEST_TOKEN_SELECTOR);
+        const SEARCH_SELECTOR = 'input[placeholder="Search by customer user name"]';
+        await page.waitForSelector(SEARCH_SELECTOR, { timeout: 10000 });
+        await page.type(SEARCH_SELECTOR, actualUsername); 
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 3000)); 
 
-        logger.info(`Successfully retrieved generated Top Token ID: ${finalTokenId}`);
+        // 🔘 ড্রপডাউন সিলেকশন (⚠️ আপনার কাজ: ইনস্পেক্ট করে সঠিক ID বা name বসান)
+        await page.select('#CHANGE_THIS_ID_TOKEN_CODE', 'Need Support'); 
+        await page.select('#CHANGE_THIS_ID_CATEGORY', 'Problem');
+        await page.select('#CHANGE_THIS_ID_SOURCE', 'Mail');
+        
+        await page.type('#CHANGE_THIS_ID_DESCRIPTION', "Generated by Bot via Email Request.");
+        
+        // 💾 সেভ বাটনে ক্লিক এবং পেজ রিলোড/আপডেটের জন্য অপেক্ষা
+        await Promise.all([
+            page.click('#CHANGE_THIS_ID_SAVE_BTN'),
+            // সেভ করার পর পেজ রিলোড হলে বট অপেক্ষা করবে, না হলে স্কিপ করবে
+            page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {}) 
+        ]);
+        await new Promise(r => setTimeout(r, 4000)); // ডাটা সেভ হয়ে লিস্টে আসার সেফটি বাফার
 
+        // 🔍 লিস্ট ফিল্টারিং ও আইডি স্ক্র্যাপ (একই পেজে)
+        await page.select('#CHANGE_THIS_ID_RESELLER', 'All');
+        await page.select('#CHANGE_THIS_ID_TYPE', 'Logical');
+        
+        const listSearchBox = '#CHANGE_THIS_ID_SEARCH';
+        await page.waitForSelector(listSearchBox);
+        await page.click(listSearchBox, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await page.type(listSearchBox, actualUsername); 
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 4000)); // ফিল্টার রেজাল্ট আসার বাফার
+
+        // 🎯 টেবিল থেকে নতুন তৈরি হওয়া টোকেন আইডি স্ক্র্যাপ
+        const finalTokenId = await page.evaluate(() => {
+            const firstRowId = document.querySelector('table tbody tr:first-child td:first-child');
+            return firstRowId ? firstRowId.innerText.trim() : null;
+        });
+        
+        logger.info(`Successfully retrieved Token ID: ${finalTokenId}`);
         await browser.close();
         return finalTokenId;
 
     } catch (error) {
-        logger.error(`[Puppeteer Automation Error]: ${error.message}`);
+        logger.error(`[Puppeteer Error]: ${error.message}`);
         if (browser) await browser.close();
         return null;
     }
