@@ -7,7 +7,7 @@ async function automateRadiusToken(userId) {
         logger.info(`Starting UI Automation Engine for User Data: ${userId}`);
         
         browser = await puppeteer.launch({ 
-            headless: false, // 💡 প্রোডাকশনে যাওয়ার সময় এটা true করে দেবেন
+            headless: false, // 💡 প্রোডাকশনে ২৪ ঘণ্টা ব্যাকগ্রাউন্ডে চালানোর সময় এটিকে true করে দেবেন
             executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 
             userDataDir: './data/browser_session', 
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'] 
@@ -133,7 +133,7 @@ async function automateRadiusToken(userId) {
         await new Promise(r => setTimeout(r, 4000)); 
 
         // ==========================================
-        // 📋 ধাপ ৫: টোকেন লিস্ট ফিল্টারিং ও আইডি স্ক্র্যাপ
+        // 📋 ধাপ ৫: টোকেন লিস্ট ফিল্টারিং ও আইডি স্ক্র্যাপ (Advanced Pagination & Scraper)
         // ==========================================
         logger.info("Applying DataTables Search to find the latest token...");
 
@@ -141,7 +141,7 @@ async function automateRadiusToken(userId) {
         await page.select('#reseller_id', 'all');
         await new Promise(r => setTimeout(r, 2000));
 
-        // ২. 🎯 ডানপাশের ছোট Search Box (আপনার দেওয়া আইডি)
+        // ২. 🎯 ডানপাশের ছোট Search Box ফিল্টারিং
         const dataTableSearchBox = '#dataTabletoken_filter input[type="search"]'; 
         await page.waitForSelector(dataTableSearchBox, { timeout: 10000 }).catch(() => logger.warn("Search box not found"));
         
@@ -149,23 +149,42 @@ async function automateRadiusToken(userId) {
             await page.click(dataTableSearchBox, { clickCount: 3 });
             await page.keyboard.press('Backspace');
             
-            // 🎯 আপনার নির্দেশ অনুযায়ী: কাস্টমারের বদলে নির্দিষ্ট করে আপনার নাম দিয়ে ফিল্টার হবে
+            // 🎯 নির্দিষ্ট করে আপনার নাম (Ahnaf Sadik Saad) দিয়ে ফিল্টার হবে
             await page.type(dataTableSearchBox, 'Ahnaf Sadik Saad'); 
-            
             await new Promise(r => setTimeout(r, 3000)); // সার্চ রেজাল্ট আসার বাফার
         }
 
-        // ৩. 🎯 টেবিল থেকে টোকেন আইডি গ্র্যাব (Token# ২ নম্বর কলামে আছে)
-        const finalTokenId = await page.evaluate(() => {
-            // টেবিলের প্রথম রো থেকে ২ নম্বর কলামের (td:nth-child(2)) লেখাটা নিবে
-            const tokenCell = document.querySelector('table tbody tr:first-child td:nth-child(2)');
+        // ৩. 🎯 নেক্সট পেজ হ্যান্ডেল করে একদম সর্বশেষ টেবিল ইলিমেন্ট থেকে টোকেন আইডি গ্র্যাব করা
+        const finalTokenId = await page.evaluate(async () => {
+            // ১. যতক্ষণ Next পেজ থাকবে, ক্লিক করে একদম শেষ পেজে চলে যাবে
+            let nextBtn = document.querySelector('.paginate_button.next');
+            
+            // 🔒 সেফটি চেক: বাটনটি পেজে এক্সিস্ট করে কি না এবং সেটি ডিজেবলড কি না
+            while (nextBtn && nextBtn.isConnected && !nextBtn.classList.contains('disabled')) {
+                nextBtn.click();
+                // টেবিল রিফ্রেশ হওয়ার জন্য বাফার ওয়েট
+                await new Promise(resolve => setTimeout(resolve, 850)); 
+                
+                // পেজ রিফ্রেশ হওয়ার পর নতুন করে নেক্সট বাটন এলিমেন্টটি আবার ধরা
+                nextBtn = document.querySelector('.paginate_button.next');
+            }
+
+            // ২. শেষ পেজে আসার পর টেবিলের সব সারি (rows) সিলেক্ট করা
+            const rows = document.querySelectorAll('table tbody tr');
+            if (rows.length === 0) return null;
+            
+            // ৩. একদম শেষের সারিটি (Last Row Element) নেওয়া হলো
+            const lastRow = rows[rows.length - 1]; 
+            
+            // ৪. ২ নম্বর কলাম থেকে টোকেন আইডি স্ক্র্যাপ করা (Token# কলাম)
+            const tokenCell = lastRow.querySelector('td:nth-child(2)');
+            
             return tokenCell ? tokenCell.innerText.trim() : null;
         });
         
-        logger.info(`Successfully retrieved Token ID: ${finalTokenId || 'Not Found'}`);
+        logger.info(`Successfully retrieved Token ID from last page: ${finalTokenId || 'Not Found'}`);
         await browser.close();
         
-        // টোকেন না পেলে ফলব্যাক রিটার্ন
         return finalTokenId || "Token Created Successfully"; 
 
     } catch (error) {
