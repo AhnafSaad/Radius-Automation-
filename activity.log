@@ -29,3 +29,11 @@
 [ERROR] [7:50:09 PM] Email or APP_PASSWORD missing in .env file!
 [ERROR] [9:11:52 PM] Email or APP_PASSWORD missing in .env file!
 [ERROR] [10:43:38 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [12:14:07 PM] Email or APP_PASSWORD missing in .env file!
+[INFO] [12:14:07 PM] ==================================================
+[INFO] [12:14:07 PM] ISP Auto-Responder Bot is Active! (Smart UI Mode)
+[INFO] [12:14:07 PM] Monitoring Gmail for new requests...
+[INFO] [12:14:07 PM] ==================================================
+[ERROR] [12:14:22 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [12:14:37 PM] Email or APP_PASSWORD missing in .env file!
+[ERROR] [12:14:52 PM] Email or APP_PASSWORD missing in .env file!
