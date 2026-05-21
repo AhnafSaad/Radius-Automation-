@@ -7,14 +7,14 @@ async function automateRadiusToken(userId) {
         logger.info(`Starting UI Automation Engine for User Data: ${userId}`);
         
         browser = await puppeteer.launch({ 
-            headless: false, // 💡 প্রোডাকশনে ২৪ ঘণ্টা ব্যাকগ্রাউন্ডে চালানোর সময় এটিকে true করে দেবেন
+            headless: false, // 💡 প্রোডাকশনে ব্যাকগ্রাউন্ডে চালানোর সময় এটিকে true করে দেবেন
             executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 
             userDataDir: './data/browser_session', 
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'] 
         });
 
         const page = await browser.newPage();
-        await page.setDefaultTimeout(120000);
+        await page.setDefaultTimeout(180000); 
 
         // ==========================================
         // 🔐 ধাপ ১: স্মার্ট লগইন লজিক
@@ -42,7 +42,7 @@ async function automateRadiusToken(userId) {
         }
 
         // ==========================================
-        // 🔍 ধাপ ২: Client Search পেজ (Smart Identification)
+        // 🔍 ধাপ ২: Client Search পেজ
         // ==========================================
         await page.goto('https://billing.circlenetworkbd.net/admin/clientSearch', { waitUntil: 'networkidle2' });
 
@@ -89,18 +89,63 @@ async function automateRadiusToken(userId) {
         const SEARCH_SELECTOR = 'input[placeholder="Search by customer user name"]';
         await page.waitForSelector(SEARCH_SELECTOR, { timeout: 10000 });
         
-        // সার্চ বক্সে নাম লেখা হলো
         await page.type(SEARCH_SELECTOR, actualUsername); 
-        logger.info("Typed username. Waiting for suggestion box to appear...");
+        logger.info(`Typing username: ${actualUsername}. Waiting for suggestion box...`);
         await new Promise(r => setTimeout(r, 2000)); 
         
-        // 🎯 সরাসরি আইডি ও ক্লাস দিয়ে নীল বক্সে ক্লিক
         const suggestionBox = '#customer_list .customer_li';
-        await page.waitForSelector(suggestionBox, { visible: true, timeout: 5000 });
-        await page.click(suggestionBox);
+        await page.waitForSelector(suggestionBox, { visible: true, timeout: 5000 }).catch(() => {});
+        
+        if (await page.$(suggestionBox)) {
+            const isClicked = await page.evaluate((username) => {
+                const listItems = Array.from(document.querySelectorAll('#customer_list .customer_li'));
+                const targetUser = username.toLowerCase();
 
-        logger.info("Clicked the blue suggestion box successfully! Waiting for auto-fill...");
-        await new Promise(r => setTimeout(r, 2000)); 
+                for (let li of listItems) {
+                    const text = li.innerText.toLowerCase();
+                    const parts = text.split('userid:');
+                    if (parts.length > 1) {
+                        const extractedId = parts[1].trim().split(/\s+/)[0]; 
+                        if (extractedId === targetUser) {
+                            li.click();
+                            return true;
+                        }
+                    }
+                }
+
+                if (listItems.length > 0) {
+                    listItems[0].click();
+                    return true;
+                }
+                return false;
+            }, actualUsername);
+
+            if (!isClicked) {
+                logger.warn(`No clickable suggestion found for username: ${actualUsername}. Aborting.`);
+                await browser.close();
+                return null;
+            }
+
+            logger.info("Clicked suggestion box. Verifying auto-filled data...");
+            await new Promise(r => setTimeout(r, 2500)); 
+            
+            const autoFilledUser = await page.evaluate(() => {
+                const usernameField = document.querySelector('input[placeholder="Username"]') || document.querySelector('#username'); 
+                return usernameField ? usernameField.value.trim().toLowerCase() : '';
+            });
+
+            if (autoFilledUser !== actualUsername.toLowerCase()) {
+                logger.error(`[SECURITY ALERT]: Username mismatch! Expected: ${actualUsername}, but Panel filled: ${autoFilledUser}. Aborting process.`);
+                await browser.close();
+                return null; 
+            }
+            
+            logger.info("Verification passed! Correct customer data auto-filled.");
+        } else {
+            logger.warn(`No suggestion found for username: ${actualUsername}. Aborting.`);
+            await browser.close();
+            return null;
+        }
 
         // ==========================================
         // 🔘 ধাপ ৪: ড্রপডাউন ও ফর্ম ফিলাপ 
@@ -121,71 +166,95 @@ async function automateRadiusToken(userId) {
         await page.select('#token_type', 'Logical');
         await new Promise(r => setTimeout(r, 1000));
         
-        logger.info("Form filled. Clicking Save Button...");
-        await Promise.all([
-            page.evaluate(() => {
-                const btns = Array.from(document.querySelectorAll('button'));
-                const saveBtn = btns.find(b => b.innerText.includes('Save'));
-                if (saveBtn) saveBtn.click();
-            }),
-            page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {}) 
-        ]);
-        await new Promise(r => setTimeout(r, 4000)); 
-
-        // ==========================================
-        // 📋 ধাপ ৫: টোকেন লিস্ট ফিল্টারিং ও আইডি স্ক্র্যাপ (Advanced Pagination & Scraper)
-        // ==========================================
-        logger.info("Applying DataTables Search to find the latest token...");
-
-        // ১. রিসেলার 'All' সিলেক্ট করা
-        await page.select('#reseller_id', 'all');
-        await new Promise(r => setTimeout(r, 2000));
-
-        // ২. 🎯 ডানপাশের ছোট Search Box ফিল্টারিং
-        const dataTableSearchBox = '#dataTabletoken_filter input[type="search"]'; 
-        await page.waitForSelector(dataTableSearchBox, { timeout: 10000 }).catch(() => logger.warn("Search box not found"));
+        logger.info("Form filled. Clicking top 'Save' Button...");
         
-        if (await page.$(dataTableSearchBox)) {
-            await page.click(dataTableSearchBox, { clickCount: 3 });
-            await page.keyboard.press('Backspace');
-            
-            // 🎯 নির্দিষ্ট করে আপনার নাম (Ahnaf Sadik Saad) দিয়ে ফিল্টার হবে
-            await page.type(dataTableSearchBox, 'Ahnaf Sadik Saad'); 
-            await new Promise(r => setTimeout(r, 3000)); // সার্চ রেজাল্ট আসার বাফার
-        }
-
-        // ৩. 🎯 নেক্সট পেজ হ্যান্ডেল করে একদম সর্বশেষ টেবিল ইলিমেন্ট থেকে টোকেন আইডি গ্র্যাব করা
-        const finalTokenId = await page.evaluate(async () => {
-            // ১. যতক্ষণ Next পেজ থাকবে, ক্লিক করে একদম শেষ পেজে চলে যাবে
-            let nextBtn = document.querySelector('.paginate_button.next');
-            
-            // 🔒 সেফটি চেক: বাটনটি পেজে এক্সিস্ট করে কি না এবং সেটি ডিজেবলড কি না
-            while (nextBtn && nextBtn.isConnected && !nextBtn.classList.contains('disabled')) {
-                nextBtn.click();
-                // টেবিল রিফ্রেশ হওয়ার জন্য বাফার ওয়েট
-                await new Promise(resolve => setTimeout(resolve, 850)); 
-                
-                // পেজ রিফ্রেশ হওয়ার পর নতুন করে নেক্সট বাটন এলিমেন্টটি আবার ধরা
-                nextBtn = document.querySelector('.paginate_button.next');
-            }
-
-            // ২. শেষ পেজে আসার পর টেবিলের সব সারি (rows) সিলেক্ট করা
-            const rows = document.querySelectorAll('table tbody tr');
-            if (rows.length === 0) return null;
-            
-            // ৩. একদম শেষের সারিটি (Last Row Element) নেওয়া হলো
-            const lastRow = rows[rows.length - 1]; 
-            
-            // ৪. ২ নম্বর কলাম থেকে টোকেন আইডি স্ক্র্যাপ করা (Token# কলাম)
-            const tokenCell = lastRow.querySelector('td:nth-child(2)');
-            
-            return tokenCell ? tokenCell.innerText.trim() : null;
+        await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            const saveBtn = btns.find(b => b.innerText.trim() === 'Save');
+            if (saveBtn) saveBtn.click();
         });
         
-        logger.info(`Successfully retrieved Token ID from last page: ${finalTokenId || 'Not Found'}`);
-        await browser.close();
+        // সেভ হওয়ার জন্য ৬ সেকেন্ড অপেক্ষা
+        logger.info("Waiting 6 seconds for backend to save the token...");
+        await new Promise(r => setTimeout(r, 6000)); 
+
+        // ==========================================
+        // 📋 🎯 ধাপ ৫: স্ক্রিনশট অনুযায়ী ফিল্টারিং ও সার্চিং
+        // ==========================================
+        logger.info("Processing the lower section of the page...");
+
+        // ১. Reseller 'All' সিলেক্ট করা
+        logger.info("Selecting Reseller 'All'...");
+        await page.evaluate(() => {
+            const sel = document.querySelector('select[name="reseller_id"]') || document.querySelector('#reseller_id');
+            if (sel) {
+                sel.value = 'all';
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+        await new Promise(r => setTimeout(r, 1500)); 
+
+        // ২. নীল 'Search' বাটনে ক্লিক করা (টেবিল লোড করার জন্য)
+        logger.info("Clicking the middle blue 'Search' button to load the table...");
+        await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            // Save বাটন বাদ দিয়ে শুধু Search বাটনটি খুঁজবে
+            const searchBtn = btns.find(b => b.innerText.trim() === 'Search');
+            if (searchBtn) searchBtn.click();
+        });
         
-        return finalTokenId || "Token Created Successfully"; 
+        // টেবিল লোড হওয়ার জন্য ৫ সেকেন্ড অপেক্ষা
+        await new Promise(r => setTimeout(r, 5000)); 
+
+        // ৩. DataTables এর সার্চ বক্সে 'Ahnaf Sadik Saad' লেখা
+        logger.info("Looking for the DataTables search box...");
+        const dtSearchBox = '#dataTabletoken_filter input'; 
+        await page.waitForSelector(dtSearchBox, { timeout: 10000 }).catch(() => logger.warn("Search box not found in DOM"));
+        
+        if (await page.$(dtSearchBox)) {
+            await page.click(dtSearchBox, { clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            
+            logger.info("Typing 'Ahnaf Sadik Saad' to filter the latest token...");
+            await page.type(dtSearchBox, 'Ahnaf Sadik Saad'); 
+            await new Promise(r => setTimeout(r, 3000)); // সার্চ ফিল্টার হওয়ার বাফার
+        }
+
+        // ৪. টেবিলের একদম প্রথম লাইন (Latest Token) থেকে টোকেন গ্র্যাব করা
+        const scrapeResult = await page.evaluate(async () => {
+            // #dataTabletoken এর ভেতরের প্রথম tr
+            const firstRow = document.querySelector('#dataTabletoken tbody tr:first-child') || document.querySelector('table tbody tr:first-child');
+            if (!firstRow) return { error: "Table is empty or not loaded." };
+            
+            if (firstRow.querySelector('.dataTables_empty')) {
+                return { error: "No matching records found for 'Ahnaf Sadik Saad'." };
+            }
+
+            // ২ নম্বর কলাম (Token#)
+            const tokenCell = firstRow.querySelector('td:nth-child(2)');
+            if (!tokenCell) return { error: "Column 2 (Token#) not found." };
+
+            const rawText = tokenCell.innerText.trim();
+            
+            // "TKN 1182741" থেকে শুধু নাম্বারটুকু বা TKN- সহ আলাদা করা
+            const cleanMatch = rawText.match(/(\d+)/);
+            if (cleanMatch && cleanMatch[1]) {
+                return { token: `TKN-${cleanMatch[1]}` };
+            }
+
+            return { token: rawText };
+        });
+        
+        let finalTokenId = null;
+        if (scrapeResult && scrapeResult.token) {
+            logger.info(`Successfully retrieved LATEST Token ID: ${scrapeResult.token}`);
+            finalTokenId = scrapeResult.token;
+        } else {
+            logger.warn(`Failed to retrieve Token ID. Reason: ${scrapeResult ? scrapeResult.error : 'Unknown'}`);
+        }
+
+        await browser.close();
+        return finalTokenId; 
 
     } catch (error) {
         logger.error(`[Puppeteer Error]: ${error.message}`);
